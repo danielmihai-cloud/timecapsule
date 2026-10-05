@@ -1,0 +1,66 @@
+# TimeCapsule (Laravel): app + PostgreSQL on one machine.
+#   docker compose up --build        → http://localhost:8080
+services:
+  app:
+    build: .
+    ports:
+      - "${APP_HOST_PORT:-8080}:80"
+    environment:
+      APP_NAME: TimeCapsule
+      APP_ENV: production
+      APP_KEY: ${APP_KEY:-}            # empty = the entrypoint generates one and keeps it
+      APP_DEBUG: ${APP_DEBUG:-false}
+      APP_URL: http://localhost:${APP_HOST_PORT:-8080}
+      LOG_CHANNEL: stderr
+      # The database is the "db" container below.
+      DB_CONNECTION: pgsql
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_DATABASE: timecapsule
+      DB_USERNAME: timecapsule
+      DB_PASSWORD: secret
+      SESSION_DRIVER: file
+      CACHE_STORE: file
+      QUEUE_CONNECTION: sync
+      AUTH_ENABLED: ${AUTH_ENABLED:-true}
+      MAIL_DELAY_SECONDS: ${MAIL_DELAY_SECONDS:-3}
+      MAX_UPLOAD_MB: 5
+      # UPLOAD_DIR not set = /var/www/html/storage/app/uploads (the "uploads" volume below)
+    volumes:
+      # Uploaded attachments are kept in a named volume.
+      - uploads:/var/www/html/storage/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: timecapsule
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: timecapsule
+    # Published so you can connect with psql or a GUI client from your computer.
+    ports:
+      - "${DB_HOST_PORT:-5432}:5432"
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U timecapsule -d timecapsule"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  # Adminer: a small web UI for the database, open http://localhost:8081
+  # System: PostgreSQL · Server: db · Username: timecapsule · Password: secret · Database: timecapsule
+  adminer:
+    image: adminer:5
+    ports:
+      - "${ADMINER_HOST_PORT:-8081}:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: db
+    depends_on:
+      - db
+
+volumes:
+  dbdata:
+  uploads:

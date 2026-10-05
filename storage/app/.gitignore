@@ -1,0 +1,7 @@
+*
+!private/
+!public/
+!uploads/
+uploads/*
+!uploads/.gitkeep
+!.gitignore

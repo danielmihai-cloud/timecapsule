@@ -1,0 +1,16 @@
+.git
+.env
+.env.*
+!.env.example
+vendor
+node_modules
+storage/app/uploads/*
+!storage/app/uploads/.gitkeep
+storage/framework/sessions/*
+storage/framework/views/*
+storage/framework/cache/*
+storage/logs/*
+bootstrap/cache/*.php
+docker-compose.yml
+README.md
+deploy
