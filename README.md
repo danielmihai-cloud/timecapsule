@@ -1,16 +1,16 @@
 # Лабораторная работа №2. Облачные вычислительные сервисы. Amazon EC2
 
-| | |
-|---|---|
-| **Студент** | Daniel Mihai |
-| **Группа** | `<группа>` |
-| **Специальность** | Informatică |
-| **Уровень** | продвинутый (Часть 1 и Часть 2, задания 1–14) |
-| **Приложение** | TimeCapsule, вариант `open_capsules_php_laravel` (Laravel 12, PHP 8.4, PostgreSQL 16) |
-| **Вариант деплоя** | B — скрипт `deploy.sh`, запускаемый с компьютера по SSH |
-| **Репозиторий** | https://github.com/danielmihai-cloud/timecapsule |
+| |                                                                                                                                          |
+|---|------------------------------------------------------------------------------------------------------------------------------------------|
+| **Студент** | Daniel Mihai                                                                                                                             |
+| **Группа** | `I2402`                                                                                                                                  |
+| **Специальность** | Informatică                                                                                                                              |
+| **Уровень** | продвинутый (Часть 1 и Часть 2, задания 1–14)                                                                                            |
+| **Приложение** | TimeCapsule, вариант `open_capsules_php_laravel` (Laravel 12, PHP 8.4, PostgreSQL 16)                                                    |
+| **Вариант деплоя** | B — скрипт `deploy.sh`, запускаемый с компьютера по SSH                                                                                  |
+| **Репозиторий** | https://github.com/danielmihai-cloud/timecapsule                                                                                         |
 | **Схема архитектуры** | [docs/architecture/deployment.png](docs/architecture/deployment.png) (исходник [deployment.drawio](docs/architecture/deployment.drawio)) |
-| **ADR** | [docs/adr/0001-deploy-method.md](docs/adr/0001-deploy-method.md) |
+| **ADR** | [docs/adr/0001-deploy-method.md](docs/adr/0001-deploy-method.md)                                                                         |
 
 Экземпляр: `i-05f2b6c4d88f8b084` (`webserver`, t3.micro, Amazon Linux 2023, `eu-central-1a`).
 
