@@ -74,6 +74,7 @@
   <div class="container">
     Served by <code>{{ gethostname() }}</code> · DB: <code>{{ config('database.connections.'.config('database.default').'.host') }}</code> · Files: <code>local disk ({{ config('timecapsule.upload_dir') }})</code>
   </div>
+  <div class="container">LR3 · Daniel Mihai · timecapsule-dev-vpc</div>
 </footer>
 
 </body>
