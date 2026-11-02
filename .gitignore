@@ -22,3 +22,6 @@
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# NAT Gateway IDs saved by scripts/nat-up.sh (lab 3)
+scripts/.nat-state
