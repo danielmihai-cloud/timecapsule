@@ -72,7 +72,7 @@
 {{-- Infrastructure info: which machine answered, which database and which file storage it uses. --}}
 <footer class="site-footer">
   <div class="container">
-    Served by <code>{{ gethostname() }}</code> · DB: <code>{{ config('database.connections.'.config('database.default').'.host') }}</code> · Files: <code>local disk ({{ config('timecapsule.upload_dir') }})</code>
+    Served by <code>{{ gethostname() }}</code> · DB: <code>{{ config('database.connections.'.config('database.default').'.host') }}</code> · Files: <code>S3 {{ config('filesystems.disks.s3.bucket') }}/uploads/</code>
   </div>
   <div class="container">LR3 · Daniel Mihai · timecapsule-dev-vpc</div>
 </footer>

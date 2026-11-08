@@ -10,7 +10,6 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CapsuleController extends Controller
 {
@@ -84,8 +83,8 @@ class CapsuleController extends Controller
         ]);
     }
 
-    /** GET /capsules/{id}/file — the attachment, streamed through the app. */
-    public function file(Request $request, Capsule $capsule): StreamedResponse
+    /** GET /capsules/{id}/file — redirect to a presigned S3 URL of the attachment (see CapsuleStorage::stream()). */
+    public function file(Request $request, Capsule $capsule): RedirectResponse
     {
         abort_unless($capsule->isVisibleTo(Auth::user()) && $capsule->hasFile(), 404);
         // Only the owner can get here with a sealed capsule: the content stays secret until it opens.

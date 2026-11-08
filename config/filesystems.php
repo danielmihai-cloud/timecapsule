@@ -47,6 +47,16 @@ return [
             'report' => false,
         ],
 
+        // Capsule attachments (app/Services/CapsuleStorage.php): bucket S3_BUCKET, prefix uploads/.
+        // No access keys: on the server the AWS SDK takes temporary credentials of the instance's IAM role.
+        's3' => [
+            'driver' => 's3',
+            'bucket' => env('S3_BUCKET'),
+            'region' => env('AWS_REGION', 'eu-central-1'),
+            'throw' => false,
+            'report' => false,
+        ],
+
     ],
 
     /*
