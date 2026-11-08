@@ -21,7 +21,7 @@
 > К `app-server` CloudShell подключался по SSH через bastion, как в ЛР3: перед каждым подключением
 > `~/bin/eic-push` кладёт на экземпляр временный публичный ключ через EC2 Instance Connect, а в `bastion-sg` на
 > время работы было добавлено правило SSH с адреса CloudShell (после работы удалено). Подписанные URL на
-> скриншотах уже просрочены; там, где ссылка видна целиком, токен сессии и подпись размыты.
+> скриншотах уже просрочены; там, где ссылка видна целиком, токен сессии и подпись размыты или обрезаны.
 
 ### Ресурсы
 
@@ -599,11 +599,202 @@ return redirect()->away($url);                       // 302, Location: https://�
 ![deploy.sh](img/12-deploy.jpg)
 Composer установил пять новых пакетов, на сервере коммит `345446c`.
 
-<!-- TODO: капсулы с картинкой и PDF, объекты в бакете, подписанный URL, старая капсула, срок ссылки, удаление -->
+Для проверок в приложении зарегистрирована новая учётная запись (адрес на скриншотах скрыт): пароль от
+учётки ЛР2 не сохранился.
+
+**Новые капсулы.** Созданы две капсулы с временем открытия через 3 минуты: с картинкой `storage-lab4.png`
+(схема из задания 14, 732 КБ) и с PDF `lr4-document.pdf` (703 байта).
+
+![Новая капсула с картинкой](img/12-form-image.jpg)
+Форма New capsule: время открытия 21:22, вложение `storage-lab4.png`. В подвале — `Files: S3
+timecapsule-dev-uploads-danielmihai/uploads/`.
+
+![Новая капсула с PDF](img/12-form-pdf.jpg)
+Вторая капсула — с `lr4-document.pdf`.
+
+![Новые объекты](img/12-new-objects.jpg)
+В `uploads/` появились `3932464cbba1fdfdf82a54b7c15f77e6.png` (731,8 КБ) и
+`20d5575f3bfa92aaeccc2158f91dd06d.pdf` (703 Б) — случайные имена, как раньше на диске. Рядом перенесённый
+`3adc8a3c….png` из задания 10 и файлы Части 1.
+
+![Content-Type новых объектов](img/12-content-type.jpg)
+`head-object` на сервере: `ContentType: image/png` и `application/pdf` — тип, который модуль передал в
+`PutObject`.
+
+**Подписанный URL.** Капсулы открылись в 21:22.
+
+![Капсулы открылись](img/12-my-capsules.jpg)
+Обе капсулы — Opened, у каждой `1 file`.
+
+![Капсула с картинкой](img/12-capsule-image.jpg)
+Картинка показывается прямо на странице: `<img src="/capsules/3/file">`, приложение отвечает 302, и браузер
+загружает её из S3.
+
+![Картинка в новой вкладке](img/12-presigned-url.jpg)
+Картинка, открытая в новой вкладке. Адрес вкладки выведен поверх страницы скриптом (`location.href`; значения
+параметров раскодированы, токен и подпись обрезаны): `https://timecapsule-dev-uploads-danielmihai.s3.eu-central-1.amazonaws.com/uploads/3932464cbba1fdfdf82a54b7c15f77e6.png`
+с параметрами `response-content-type=image/png`, `response-content-disposition=inline; filename=storage-lab4.png`,
+`X-Amz-Algorithm=AWS4-HMAC-SHA256`, `X-Amz-Credential=ASIA…/20261108/eu-central-1/s3/aws4_request`,
+`X-Amz-Security-Token` (временные ключи роли), `X-Amz-Date=20261108T192245Z`, `X-Amz-Expires=300`,
+`X-Amz-SignedHeaders=host`, `X-Amz-Signature`.
+
+**PDF.** На странице капсулы кнопка `Download lr4-document.pdf` ведёт на `/capsules/4/file?download=1`.
+
+![Капсула с PDF](img/12-capsule-pdf.jpg)
+Капсула с PDF: кнопки Download и Delete.
+
+После нажатия на кнопку браузер начал скачивание. Под каким именем сохранится файл, решает заголовок
+`Content-Disposition` в ответе S3, поэтому заголовки проверены на сервере `curl` по такой же ссылке, выданной
+модулем хранения (`download=1`):
+
+![Заголовки PDF](img/12-pdf-headers.jpg)
+`HTTP/1.1 200 OK`, `Content-Type: application/pdf`, `Content-Disposition: attachment; filename=lr4-document.pdf`,
+`Content-Length: 703`; скачанный файл — `PDF document, version 1.4`. Поэтому браузер сохраняет его под
+исходным именем `lr4-document.pdf`, а не `20d5575f….pdf`.
+
+**Старая капсула.** Капсула ЛР2 с вложением (`#1 "Test"`) приватная и принадлежит учётке ЛР2, новая учётка её
+не видит, поэтому проверка сделана на сервере тем же модулем, который вызывает `CapsuleController::file()`:
+
+![Старая капсула из S3](img/12-old-capsule-s3.jpg)
+Ссылка на `uploads/3adc8a3c76dda7173523bddeba575813.png` — перенесённый в задании 10 файл: `200 OK`,
+`Server: AmazonS3`, `x-amz-version-id: D5CvBhkm…` (версия, загруженная `sync`), `Content-Type: image/png` и
+исходное имя `Снимок экрана — 2026-10-05 в 19.47.00.png` в `filename*` (UTF-8) с ASCII-вариантом в
+`filename`.
+
+**Срок ссылки.** Адрес картинки из вкладки выше (`X-Amz-Date=20261108T192245Z`) открыт повторно через 5 минут, в
+21:27:55. S3 вернул XML:
+
+```xml
+<Error>
+  <Code>AccessDenied</Code>
+  <Message>Request has expired</Message>
+  <X-Amz-Expires>300</X-Amz-Expires>
+  <Expires>2026-11-08T19:27:45Z</Expires>
+  <ServerTime>2026-11-08T19:27:55Z</ServerTime>
+  <RequestId>6HZ9KAQZT3WW6ABH</RequestId>
+  …
+</Error>
+```
+
+Страницу браузера с этим XML не удалось сохранить скриншотом, поэтому опыт повторён на сервере: модуль
+хранения выдал ссылку на ту же картинку, `curl` сразу получил `HTTP 200 image/png 749333`, а через 5 минут по
+той же ссылке:
+
+![Ссылка через 5 минут](img/12-link-expired.jpg)
+`now: 20261108T193805Z`, ссылка подписана в `19:32:55Z` с `X-Amz-Expires=300` → `HTTP 403`, `AccessDenied`,
+`Request has expired`, `Expires 19:37:55Z`, `ServerTime 19:38:05Z`. Файл со ссылкой после проверки удалён.
+
+**Удаление.** Капсула с PDF удалена формой Delete на её странице (`POST /capsules/4/delete` →
+`CapsuleStorage::delete()` → `DeleteObject`).
+
+![Капсула удалена](img/12-capsule-deleted.jpg)
+`Capsule deleted.` — осталась капсула с картинкой.
+
+![Show versions](img/12-show-versions.jpg)
+`uploads/` с включённым Show versions: у `20d5575f3bfa92aaeccc2158f91dd06d.pdf` сверху маркер удаления
+(`Delete marker`, 0 Б, 21:24:49), под ним прежняя версия PDF `HRoIcie78r4bGLJ5K1.SD7p3eAd72q8r` (703 Б).
+
+**Почему ссылку, которую пользователь переслал другу, не нужно специально отзывать? Что осталось в бакете
+после удаления капсулы и когда это исчезнет окончательно?**
+Ссылка сама перестаёт работать через 5 минут: `X-Amz-Expires=300` отсчитывается от подписанного `X-Amz-Date`,
+и S3 отвечает `Request has expired`, а срок нельзя продлить, не испортив подпись. Кроме того, она не переживёт
+временные ключи роли, которыми подписана, и права проверяются при каждом запросе. Пока ссылка действует, по ней
+можно только скачать один этот объект, а после удаления капсулы она не работает и в эти 5 минут: текущая
+версия ключа — маркер удаления. В бакете остались маркер удаления и прежняя версия PDF. Сама она не исчезнет:
+правило `timecapsule-dev-noncurrent` удаляет неактуальную версию через 90 дней, только если у ключа есть ещё две
+более новые неактуальные версии, а здесь она одна; в Standard-IA она тоже не перейдёт (меньше 128 КБ).
+Окончательно файл удалит администратор с правом `s3:DeleteObjectVersion` (у приложения его нет) или второе
+правило жизненного цикла без `NewerNoncurrentVersions` — как и записано в ADR-0003.
 
 ### Задание 13. Сервер без состояния
 
-<!-- TODO -->
+**Локальные файлы убраны.**
+
+```bash
+sudo mv /var/www/timecapsule/storage/uploads ~/uploads-backup
+```
+
+![Папка перенесена](img/13-mv-uploads.jpg)
+В `~/uploads-backup` старая картинка ЛР2, в `/var/www/timecapsule/storage/` остались только `app`,
+`framework` и `logs`.
+
+![Капсула с картинкой без папки](img/13-old-capsule-ok.jpg)
+Капсула «LR4: картинка в S3», созданная до переноса, открывается с вложением.
+
+![Капсула ЛР2 без папки](img/13-lr2-capsule-ok.jpg)
+Вложение капсулы ЛР2 по ссылке модуля хранения — `200 OK` от `AmazonS3`, `image/png`, 163 942 байта, хотя
+локальной копии больше нет.
+
+![Новая капсула](img/13-new-capsule-sealed.jpg)
+Создана ещё одна капсула с вложением — «LR4: сервер без состояния» (`lr4-stateless.png`).
+
+![Папки нет, объект в S3](img/13-no-local-folder.jpg)
+Папка `uploads` не появилась снова, а в бакете новый объект `9d27ce4db1e44b574f7e1a4f0c06375b.png`
+(595 899 байт).
+
+![Новая капсула открылась](img/13-new-capsule-ok.jpg)
+Капсула открылась в 21:36, картинка загружается из S3.
+
+Всё работает, поэтому копия удалена:
+
+```bash
+sudo rm -rf ~/uploads-backup
+```
+
+![Копия удалена](img/13-rm-backup.jpg)
+`~/uploads-backup` больше нет (`link.txt` — временный файл со ссылкой для проверки срока из задания 12,
+удалён следом).
+
+**Права уменьшены.** Новая версия политики `timecapsule-dev-app-s3` без правила `ListOnlyUploadsPrefix`:
+
+```bash
+POLICY_ARN=arn:aws:iam::637107289904:policy/timecapsule-dev-app-s3
+aws iam create-policy-version --policy-arn $POLICY_ARN --policy-document file://policy-v2.json --set-as-default
+aws iam list-policy-versions --policy-arn $POLICY_ARN --output table
+aws iam get-policy-version --policy-arn $POLICY_ARN --version-id v2 --query PolicyVersion.Document
+```
+
+![Версия v2](img/13-policy-v2.jpg)
+`v2` — версия по умолчанию (`IsDefaultVersion: True`), `v1` сохранена; в `v2` одно правило
+`ReadWriteDeleteUploads`: `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject` на `uploads/*`.
+
+Приложение работает и с новой политикой: картинка капсулы «LR4: сервер без состояния» загружается, а капсула
+«LR4: проверка политики v2» создана с вложением и сразу удалена.
+
+![Приложение после v2](img/13-app-after-v2.jpg)
+`Capsule deleted.` после проверки; остались две капсулы ЛР4.
+
+![Версии после v2](img/13-versions-after-v2.jpg)
+В бакете (под `cloudstudent`): `09a6b6c7….png` загружен в 19:39:58 и получил маркер удаления в 19:40:14 — уже
+после создания `v2` в 19:38:21, то есть `PutObject` и `DeleteObject` по-прежнему разрешены.
+
+**Запрос несуществующего объекта.**
+
+```bash
+aws s3 ls s3://$BUCKET/uploads/                       # на сервере
+aws s3 cp s3://$BUCKET/uploads/no-such-file.txt -     # на сервере и в CloudShell
+```
+
+![На сервере](img/13-server-403.jpg)
+На `app-server` (роль `timecapsule-dev-app-role`): `ListObjectsV2` → `AccessDenied` (no identity-based policy
+allows the s3:ListBucket action), а запрос `no-such-file.txt` → `(403) when calling the HeadObject operation:
+Forbidden`.
+
+![В CloudShell](img/13-cloudshell-404.jpg)
+В CloudShell (`user/cloudstudent`, администратор): тот же запрос → `(404) when calling the HeadObject operation:
+Not Found`.
+
+**Почему S3 ответил вам и серверу по-разному, хотя объекта нет в обоих случаях? Зачем S3 так поступает? Что
+теперь нужно сделать, чтобы заменить `app-server` новым сервером без потери данных?**
+Для отсутствующего ключа S3 отвечает `404 NoSuchKey` только тому, у кого есть `s3:ListBucket` на бакет; без
+этого права ответ — `403 AccessDenied`. У `cloudstudent` `ListBucket` есть, а у роли сервера после `v2` его
+нет. Так S3 не раскрывает, какие ключи существуют: иначе, перебирая имена и сравнивая 403 и 404, можно было бы
+узнать содержимое бакета без права его листать. Данных на `app-server` больше нет: вложения в S3, база на
+`db-server`, код в GitHub. Чтобы заменить сервер, нужно запустить новый экземпляр в `public-a` с
+`web-sg` и профилем экземпляра `timecapsule-dev-app-role`, развернуть код (`git clone`, `composer install`)
+и перенести `.env` с тем же `APP_KEY`, паролем базы, `S3_BUCKET` и `AWS_REGION`, а затем перевесить Elastic IP
+`3.64.208.134`. Потеряются только сессии в `storage/framework/sessions` (пользователи войдут заново) и
+локальные логи.
 
 ## Архитектура и ADR
 
@@ -629,7 +820,21 @@ Architecture Icons):
 
 ## Итог
 
-<!-- TODO -->
+После работы из `bastion-sg` удалено временное правило SSH для CloudShell (осталось только правило с моего
+IP), `bastion`, `app-server` и `db-server` остановлены, временные файлы `~/test.txt` и `~/policy-v2.json` в
+CloudShell удалены.
+
+![bastion-sg](img/99-bastion-sg.jpg)
+Временное правило `TEMP-CloudShell-LR4` отозвано, в `bastion-sg` осталось `Admin SSH from My IP`.
+
+![Экземпляры остановлены](img/99-stopped.jpg)
+В домашней папке CloudShell нет `test.txt`; `timecapsule-dev-bastion`, `timecapsule-dev-app` и
+`timecapsule-dev-db` в состоянии stopped, Elastic IP `3.64.208.134` остался за `app-server`.
+
+Бакет `timecapsule-dev-uploads-danielmihai` (вложения приложения под `uploads/` и файлы Части 1), политика
+`timecapsule-dev-app-s3` (версия `v2` по умолчанию), роли `timecapsule-dev-app-role` и
+`timecapsule-dev-s3-tester` оставлены для следующих работ. На `app-server` нет ни папки с вложениями, ни ключей
+доступа: его можно заменить новым экземпляром без потери данных.
 
 ## Контрольные вопросы
 
@@ -657,8 +862,8 @@ IAM ничего не разрешают анонимному участнику
 
 **3. Почему приложение отдаёт файлы через подписанный URL, а не открывает бакет для чтения всем?**
 Публичный бакет отдавал бы каждый файл любому, кто узнал адрес, навсегда и мимо правил приложения: файл
-запечатанной или чужой капсулы скачивался бы по ссылке, отозвать доступ было бы нельзя, а для этого пришлось бы
-выключить Block Public Access. Подписанный URL выдаётся только после проверки прав пользователя, работает
+запечатанной или чужой капсулы скачивался бы по ссылке, и отозвать доступ было бы нельзя. К тому же для этого
+пришлось бы выключить Block Public Access. Подписанный URL выдаётся только после проверки прав пользователя, работает
 5 минут и только для одного объекта. При этом файл, как и при публичном бакете, идёт браузеру напрямую из S3 и
 не нагружает сервер — в отличие от старой отдачи через PHP.
 
@@ -673,7 +878,16 @@ Access Point.
 
 ## Вывод
 
-<!-- TODO -->
+В регионе `eu-central-1` создан закрытый бакет S3 для вложений TimeCapsule: Block Public Access, без ACL,
+шифрование SSE-S3, политика бакета с запретом запросов не по HTTPS, версионирование и правило жизненного цикла
+для старых версий и незавершённых загрузок. На практике проверено, что в S3 нет папок, а есть ключи с
+префиксами, что `DeleteObject` при версионировании только ставит маркер удаления, а подписанный URL нельзя
+изменить или продлить. Для приложения написана политика IAM только на префикс `uploads/`; её действие проверено
+через тестовую роль, а затем она выдана `app-server` через профиль экземпляра — без ключей доступа в `.env`.
+Модуль хранения переписан на AWS SDK for PHP: файлы загружаются в S3, а браузер получает их напрямую по
+пятиминутным подписанным ссылкам после проверки прав в приложении. Старые файлы перенесены `aws s3 sync`,
+локальная папка удалена, право `s3:ListBucket` убрано из политики, и сервер приложения больше не хранит
+данных пользователей. Решение и его последствия записаны в ADR-0003 и показаны на схеме.
 
 ## Источники
 
