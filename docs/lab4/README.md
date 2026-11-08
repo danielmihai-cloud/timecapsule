@@ -58,6 +58,12 @@ Block all public access, версионирование выключено, ши
 ![Создание бакета](img/01-create-bucket-general.jpg)
 Регион `eu-central-1`, тип General purpose, имя бакета.
 
+![Теги бакета](img/01-bucket-tags.jpg)
+Properties → Tags: `Name`, `Project=timecapsule`, `Environment=dev`, `Owner=danielmihai`, `Lab=lab4`.
+
+![Шифрование по умолчанию](img/01-bucket-encryption.jpg)
+Properties → Default encryption: SSE-S3 (ключи под управлением Amazon S3).
+
 ![Папки uploads и backups](img/01-bucket-folders.jpg)
 В бакете созданы «папки» `uploads/` и `backups/`.
 
@@ -487,15 +493,113 @@ timecapsule-dev-app-role`). Привязав профиль экземпляра
 
 ### Задание 10. Перенос существующих файлов
 
-<!-- TODO: заполнить после выполнения -->
+В этом развёртывании приложение лежит в `/var/www/timecapsule` (без `current/`), а вложения — в
+`storage/uploads`: так задано `UPLOAD_DIR=storage/uploads` в `.env` ещё в ЛР2. Папка принадлежит `apache`
+(`drwx------`), поэтому от `ec2-user` CLI её не читает, и копирование выполнено через `sudo`: под root CLI
+берёт те же временные ключи роли из метаданных экземпляра.
+
+```bash
+cd /var/www/timecapsule
+sudo ls -l storage/uploads
+aws s3 sync storage/uploads s3://$BUCKET/uploads/ --dryrun        # от ec2-user: папка не читается
+sudo aws s3 sync storage/uploads s3://$BUCKET/uploads/ --dryrun
+sudo aws s3 sync storage/uploads s3://$BUCKET/uploads/
+sudo aws s3 sync storage/uploads s3://$BUCKET/uploads/ --dryrun   # повторная проверка
+aws s3api head-object --bucket $BUCKET --key uploads/3adc8a3c76dda7173523bddeba575813.png
+```
+
+![sync --dryrun](img/10-sync-dryrun.jpg)
+На диске один файл из ЛР2 — `3adc8a3c76dda7173523bddeba575813.png` (163 942 байта). От `ec2-user`:
+`warning: Skipping file /var/www/timecapsule/storage/uploads/. File/Directory is not readable.`, через `sudo`:
+`(dryrun) upload: storage/uploads/3adc8a3c….png to s3://timecapsule-dev-uploads-danielmihai/uploads/3adc8a3c….png`.
+
+![sync и проверка](img/10-sync-done.jpg)
+`sync` загрузил файл, повторный `--dryrun` ничего не вывел — все файлы уже в бакете. У перенесённого объекта
+`ContentType: image/png`, `ContentLength: 163942`, `ServerSideEncryption: AES256` и свой `VersionId`.
+
+**Хватило ли для `aws s3 sync` прав политики приложения? Какие из разрешённых действий использовала команда?**
+Хватило: команда выполнялась от имени `timecapsule-dev-app-role` и не получила ни одного `AccessDenied`. Сначала
+`sync` получает список объектов назначения запросом `ListObjectsV2` с `prefix=uploads/` — это `s3:ListBucket`,
+и префикс подходит под условие `uploads/*` — и сравнивает имена, размеры и время изменения с локальными
+файлами. Затем каждый отсутствующий или изменившийся файл загружает запросом `PutObject` (`s3:PutObject` на
+`uploads/*`), а `Content-Type` CLI подбирает по расширению. Режим `--dryrun` использовал только
+`s3:ListBucket`; `s3:GetObject` и `s3:DeleteObject` не понадобились (без `--delete` `sync` ничего не удаляет).
 
 ### Задание 11. Модуль хранения на S3
 
-<!-- TODO -->
+Изменения в репозитории:
+
+* [af1a007](https://github.com/danielmihai-cloud/timecapsule/commit/af1a007fd69ffafa64c0a7b689e1c83f3ed5b207) —
+  модуль хранения [app/Services/CapsuleStorage.php](../../app/Services/CapsuleStorage.php), диск `s3` в
+  [config/filesystems.php](../../config/filesystems.php), подвал страницы и `.env.example`;
+* [345446c](https://github.com/danielmihai-cloud/timecapsule/commit/345446c7efb5d4b84dd0096dce77b98967f66f3d) —
+  `composer.json` и `composer.lock`.
+
+Composer есть только на сервере, поэтому пакеты добавлены там, во временной копии репозитория:
+
+```bash
+cd ~ && git clone -q -b lab4-s3-storage https://github.com/danielmihai-cloud/timecapsule.git tc-composer
+cd tc-composer && composer require aws/aws-sdk-php league/flysystem-aws-s3-v3 --no-install --no-scripts
+# изменённые composer.json и composer.lock закоммичены, временная копия удалена: rm -rf ~/tc-composer
+```
+
+![composer require](img/11-composer-require.jpg)
+Добавлены `aws/aws-sdk-php` 3.403.1 (`^3.403`) и `league/flysystem-aws-s3-v3` 3.35.3 (`^3.35`), с ними
+`aws/aws-crt-php`, `mtdowling/jmespath.php` и `symfony/filesystem`.
+
+Настройки в `.env.example` и в `/var/www/timecapsule/.env` на сервере:
+
+```dotenv
+S3_BUCKET=timecapsule-dev-uploads-danielmihai
+AWS_REGION=eu-central-1
+```
+
+![.env на сервере](img/11-server-env.jpg)
+В `.env` на сервере добавлены `S3_BUCKET` и `AWS_REGION`; строк с `AWS_ACCESS_KEY_ID` и
+`AWS_SECRET_ACCESS_KEY` нет (`grep -c` → `0`).
+
+Диск `s3` в Laravel по умолчанию читает `AWS_BUCKET` и `AWS_DEFAULT_REGION`, поэтому в
+`config/filesystems.php` он настроен на `S3_BUCKET` и `AWS_REGION`, а `key` и `secret` не заданы: SDK ищет
+учётные данные по стандартной цепочке и находит временные ключи роли в метаданных экземпляра, как AWS CLI в
+задании 9. Модуль берёт у диска готовый `S3Client` (`Storage::disk('s3')->getClient()`): Laravel создаёт
+диск один раз и дальше отдаёт тот же объект.
+
+| Метод `CapsuleStorage` | Что делает | Вызов SDK |
+|---|---|---|
+| `save()` | загружает файл под ключом `uploads/<32 hex-символа>.<расширение>` с `ContentType`, определённым по содержимому файла, и возвращает случайное имя, как раньше | `putObject` с `SourceFile` |
+| `delete()` | удаляет объект `uploads/<имя>` | `deleteObject` |
+| `stream()` | отвечает 302 на подписанный URL сроком 5 минут; в ссылке `ResponseContentType` и `ResponseContentDisposition`: `inline` для картинок, `attachment` для PDF и при скачивании, с исходным именем файла | `getCommand('GetObject', …)` и `createPresignedRequest(…, '+5 minutes')` |
+
+```php
+$command = $this->client()->getCommand('GetObject', [
+    'Bucket' => $this->bucket(),
+    'Key' => self::PREFIX.$name,                     // uploads/3adc8a3c….png
+    'ResponseContentType' => $mime,                  // image/png, application/pdf
+    'ResponseContentDisposition' => $disposition,    // inline или attachment; filename="…"
+]);
+$url = (string) $this->client()->createPresignedRequest($command, self::LINK_LIFETIME)->getUri();
+
+return redirect()->away($url);                       // 302, Location: https://…s3.eu-central-1.amazonaws.com/uploads/…
+```
+
+Проверка прав пользователя на капсулу осталась в `CapsuleController::file()` и выполняется до вызова
+`stream()`; в контроллере поменялся только тип возвращаемого значения (`StreamedResponse` →
+`RedirectResponse`). В подвале страницы вместо `Files: local disk (storage/uploads)` теперь
+`Files: S3 timecapsule-dev-uploads-danielmihai/uploads/`. Ключи доступа IAM не создавались: код проверялся на
+`app-server` с ролью.
 
 ### Задание 12. Деплой и проверка
 
-<!-- TODO -->
+Ветка `lab4-s3-storage` влита в `main`, и новая версия выпущена тем же способом, что в ЛР3, — скриптом
+`~/deploy.sh` на `app-server`: `git pull --ff-only`, `composer install --no-dev --optimize-autoloader`, затем от
+`apache` — `php artisan package:discover`, `migrate --force` и `config:cache`, и в конце
+`systemctl reload php-fpm`. `config:cache` заново читает `.env` (в том числе новые `S3_BUCKET` и `AWS_REGION`), а
+перезагрузка PHP-FPM запускает новые рабочие процессы с новым кодом и кэшем настроек.
+
+![deploy.sh](img/12-deploy.jpg)
+Composer установил пять новых пакетов, на сервере коммит `345446c`.
+
+<!-- TODO: капсулы с картинкой и PDF, объекты в бакете, подписанный URL, старая капсула, срок ссылки, удаление -->
 
 ### Задание 13. Сервер без состояния
 
@@ -505,7 +609,23 @@ timecapsule-dev-app-role`). Привязав профиль экземпляра
 
 ![Схема ЛР4](../architecture/storage-lab4.png)
 
-<!-- TODO -->
+Схема ЛР3 дополнена (исходник — [storage-lab4.svg](../architecture/storage-lab4.svg), значки — AWS
+Architecture Icons):
+
+* бакет `timecapsule-dev-uploads-danielmihai` с префиксом `uploads/` — внутри региона `eu-central-1`, но вне
+  VPC: S3 — региональный сервис, к нему обращаются по HTTPS через его публичный адрес;
+* роль `timecapsule-dev-app-role` с политикой `timecapsule-dev-app-s3`, связанная с `app-server` через
+  профиль экземпляра (пунктир);
+* две стрелки: запросы приложения к S3 (`PutObject`, `DeleteObject` по HTTPS через Internet Gateway) и
+  скачивание вложения браузером напрямую из S3 по подписанному URL сроком 5 минут. Через `app-server` проходит
+  только запрос к приложению и его ответ 302.
+
+Решение записано в [ADR-0003. Где хранить вложения пользователей](../adr/0003-attachment-storage.md):
+сравнены диск EBS сервера приложения, общая файловая система Amazon EFS и бакет Amazon S3; выбран S3. Диск EBS
+привязан к одному серверу и одной зоне доступности, EFS решает это, но дороже в несколько раз и по-прежнему
+отдаёт файлы через PHP. S3 не зависит от сервера, хранит данные минимум в трёх зонах, оплачивается по
+фактическому объёму, а версионирование, жизненный цикл, IAM и подписанные URL закрывают требования к доступу и
+защите от удаления.
 
 ## Итог
 
@@ -513,7 +633,43 @@ timecapsule-dev-app-role`). Привязав профиль экземпляра
 
 ## Контрольные вопросы
 
-<!-- TODO -->
+Письменные ответы на вопросы заданий — в конце каждого задания. Ниже — ответы на дополнительные вопросы
+продвинутого уровня, подготовленные к защите.
+
+**1. Как проходит запрос на скачивание вложения: от нажатия ссылки в браузере до получения файла? Где на этом
+пути проверяются права пользователя приложения, а где права роли?**
+Браузер отправляет `GET /capsules/{id}/file` с cookie сессии на `3.64.208.134`; nginx передаёт его PHP-FPM, и
+Laravel проверяет права пользователя приложения: капсулу видит только владелец (публичную после открытия — все),
+иначе 404, а у запечатанной капсулы файл не отдаётся (403). Если проверка пройдена, модуль хранения подписывает
+`GetObject` для `uploads/<имя>` временными ключами роли (локально, без обращения к S3) и отвечает 302 с
+`Location` на подписанный URL. Браузер сам идёт в S3 по HTTPS, и уже S3 проверяет подпись и срок, политику бакета
+(только HTTPS) и права роли `timecapsule-dev-app-role` (`s3:GetObject` на `uploads/*`) — и отдаёт файл с
+`Content-Type` и `Content-Disposition` из параметров ссылки.
+
+**2. Какие настройки бакета и какие свойства подписанного URL не дают постороннему открыть вложение по прямому
+адресу объекта?**
+Бакет: включён Block all public access, ACL выключены (Bucket owner enforced), а ни политика бакета, ни политики
+IAM ничего не разрешают анонимному участнику, поэтому запрос без подписи получает `403 AccessDenied` (задание 1);
+вдобавок политика бакета запрещает запросы не по HTTPS. Подписанный URL действует только для одного метода
+(`GET`), одного ключа и указанных параметров `response-*`: любое изменение даёт `SignatureDoesNotMatch`.
+Срок ограничен `X-Amz-Expires=300` и временем жизни временных ключей роли, а права проверяются в момент запроса —
+если у роли забрать `s3:GetObject`, перестанут работать и уже выданные ссылки.
+
+**3. Почему приложение отдаёт файлы через подписанный URL, а не открывает бакет для чтения всем?**
+Публичный бакет отдавал бы каждый файл любому, кто узнал адрес, навсегда и мимо правил приложения: файл
+запечатанной или чужой капсулы скачивался бы по ссылке, отозвать доступ было бы нельзя, а для этого пришлось бы
+выключить Block Public Access. Подписанный URL выдаётся только после проверки прав пользователя, работает
+5 минут и только для одного объекта. При этом файл, как и при публичном бакете, идёт браузеру напрямую из S3 и
+не нагружает сервер — в отличие от старой отдачи через PHP.
+
+**4. Как изменится схема, если вложения должны пережить отказ всего региона `eu-central-1`?**
+S3 Standard переживает отказ зоны доступности, но не региона. Понадобится второй бакет в другом регионе
+(например, `eu-west-1`) и правило репликации между регионами (Cross-Region Replication, требует версионирования
+в обоих бакетах и роли для репликации, по желанию с Replication Time Control). Копия асинхронная, поэтому файлы
+последних минут до отказа могут потеряться. Кроме бакета во втором регионе нужно поднять и всё остальное: сервер
+приложения из AMI, реплику базы, а переключение пользователей настроить в Route 53 (failover по проверкам
+доступности); приложению при этом нужно сменить `S3_BUCKET` и `AWS_REGION` или работать через S3 Multi-Region
+Access Point.
 
 ## Вывод
 
@@ -521,4 +677,11 @@ timecapsule-dev-app-role`). Привязав профиль экземпляра
 
 ## Источники
 
-<!-- TODO -->
+1. Лекция 6 «Облачные хранилища. Amazon S3, EBS и EFS», Hands-on 6.1–6.3.
+2. Условие лабораторной работы №4: [MSU-Courses/cloud-computing, Lab/04_Cloud_Storage](https://github.com/MSU-Courses/cloud-computing/tree/main/Lab/04_Cloud_Storage).
+3. Amazon S3 User Guide: Blocking public access, Controlling ownership of objects (Object Ownership), Bucket policies, Using versioning, Managing the lifecycle of objects, Sharing objects with presigned URLs, Replicating objects.
+4. AWS Identity and Access Management User Guide: Policy evaluation logic, IAM roles, Using an IAM role to grant permissions to applications running on Amazon EC2 instances.
+5. AWS CLI Command Reference: `aws s3 sync`, `aws s3 presign`, `aws s3api head-object`, `aws sts assume-role`.
+6. AWS SDK for PHP Developer Guide: Amazon S3 pre-signed URLs; Laravel 12 Documentation: File Storage (Amazon S3 driver).
+7. Amazon S3 pricing, Amazon EBS pricing, Amazon EFS pricing.
+8. AWS Architecture Icons.
