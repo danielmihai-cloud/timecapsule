@@ -108,7 +108,8 @@ Laravel uses its own names for some of them:
 | `MAX_UPLOAD_MB` | `5` | Maximum attachment size in MB |
 | `MAIL_DELAY_SECONDS` | `3` | How long the simulated "email sending" takes when a capsule is created |
 | `AUTH_ENABLED` | `true` | `false` turns off login: everybody uses the app as **Guest** |
-| `SESSION_DRIVER` | `file` | Sessions are files in `storage/framework/sessions` |
+| `SESSION_DRIVER` | `file` | Sessions are files in `storage/framework/sessions`; `dynamodb` keeps them in the DynamoDB table `DYNAMODB_CACHE_TABLE` (needed with several servers) |
+| `DYNAMODB_CACHE_TABLE` | `timecapsule-dev-sessions` | DynamoDB table for sessions (key `key`, TTL attribute `expires_at`) |
 | `LOG_CHANNEL` | `single` | `single` = `storage/logs/laravel.log`, `stderr` = console (Docker) |
 
 The TimeCapsule settings are read in `config/timecapsule.php`.

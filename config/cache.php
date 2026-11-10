@@ -53,6 +53,15 @@ return [
             'lock_path' => storage_path('framework/cache/data'),
         ],
 
+        // Sessions live here when SESSION_DRIVER=dynamodb (table key "key", TTL attribute "expires_at").
+        // No access keys: on the server the AWS SDK takes temporary credentials of the instance's IAM role.
+        'dynamodb' => [
+            'driver' => 'dynamodb',
+            'region' => env('AWS_REGION', 'eu-central-1'),
+            'table' => env('DYNAMODB_CACHE_TABLE', 'cache'),
+            'endpoint' => env('DYNAMODB_ENDPOINT'),
+        ],
+
         'memcached' => [
             'driver' => 'memcached',
             'persistent_id' => env('MEMCACHED_PERSISTENT_ID'),
